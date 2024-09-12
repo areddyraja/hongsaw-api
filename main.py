@@ -2,20 +2,21 @@ from fastapi import FastAPI, Form, Depends, status, HTTPException, Request, Back
 from fastapi.responses import  HTMLResponse, RedirectResponse,JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
-from database import engine, SessionLocal
+from .database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from ultralytics import YOLO
 from typing import Annotated
 import supervision as sv
-import workflows, cv2
-import models
+import cv2
+from .workflows import find_dwell_time, vehicles_in_or_out, helmet_detection
+from .models import Devices, DwellTime, Base
 import os, sys, io
 import json, time
 
 
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="/app/app/templates")
 app.state.is_running_flag = {"is_running": False}
 
 origins = ["*"]
@@ -31,13 +32,13 @@ app.add_middleware(
 
 
 # creates all tables defined in models
-models.Base.metadata.create_all(bind = engine)
-Devices = models.Devices
+Base.metadata.create_all(bind = engine)
+Devices = Devices
 
 
 # load yolo models and tracker to detect and track objects.
-model = YOLO('yolo_models/yolov8n.pt')
-hel_model = YOLO('yolo_models/yolov8ft(hel).pt')
+model = YOLO('/app/app/yolo_models/yolov8n.pt')
+hel_model = YOLO('/app/app/yolo_models/yolov8ft(hel).pt')
 tracker = sv.ByteTrack()
 
  
@@ -86,11 +87,11 @@ def list_models(request:Request):
     Reads model information and displays it using the 'list_models.html' template.
     '''
 
-    models = os.listdir('yolo_models')
+    models = os.listdir('/app/app/yolo_models/')
     models_json = {}
     for model in models:
         
-        yolo_model = YOLO(f'yolo_models/{model}')
+        yolo_model = YOLO(f'/app/app/yolo_models/{model}')
         model_info = yolo_model.info()
         layers, parameters, gradients, gflops = model_info
         
@@ -111,7 +112,7 @@ def list_devices(request: Request, user_id: int, db: db_dependency):
     Endpoint to list devices configured by a specific user.
     Queries the devices table based on the user ID.
     '''
-    devices = db.query(models.Devices).filter(models.Devices.user_id == user_id ).all()
+    devices = db.query(Devices).filter(Devices.user_id == user_id ).all()
 
     if devices is None:
         raise HTTPException(status_code=404, detail=f'No Devices found with user:{user_id}')
@@ -140,7 +141,7 @@ def configure_new_device(db: db_dependency,
     - Creates a new device entry in the database.
     - Commits the changes and redirects the user to their device list.
     '''
-    device = models.Devices(device_ip= device_ip, location= location, user_id= user_id)
+    device = Devices(device_ip= device_ip, location= location, user_id= user_id)
     db.add(device)
     db.commit()
 
@@ -215,7 +216,7 @@ def delete_device(db: db_dependency, device_id:int):
 
 @app.get("/select_device",response_class=HTMLResponse)
 async def run_device(request:Request,db:db_dependency):
-    devices = db.query(models.Devices).all()
+    devices = db.query(Devices).all()
     if not devices:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail='No Devices')
     
@@ -320,7 +321,7 @@ def start_function(request: Request,
         # workflows.vehicles_in_or_out()
         pass
     elif workflow == 'dwell_time':
-        background_tasks.add_task(workflows.find_dwell_time, 
+        background_tasks.add_task(find_dwell_time, 
                                   app.state.is_running_flag,
                                   cap,
                                   configurations)
@@ -349,7 +350,7 @@ def stop_function(request:Request, db:db_dependency):
     device_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     # Query to find all events that match the current device start time
-    current_events = db.query(models.DwellTime).filter(models.DwellTime.device_start_time == device_start_time).all()
+    current_events = db.query(DwellTime).filter(DwellTime.device_start_time == device_start_time).all()
     # Update the device end time for each event
     for current_event in current_events:
         if current_event:
@@ -403,7 +404,7 @@ def list_events(request:Request, db:db_dependency, workflow:str):
     """
     # Query the database for events based on the workflow type
     if workflow == 'dwelltime':
-        events = db.query(models.DwellTime).all()
+        events = db.query(DwellTime).all()
     # Render the 'events.html' template with the retrieved events
     return templates.TemplateResponse('events.html',{"request":request,"events":events})
 

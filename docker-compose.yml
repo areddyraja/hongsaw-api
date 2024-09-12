@@ -1,0 +1,24 @@
+# compose.yaml
+services:
+  influxdb2:
+    image: influxdb:2
+    ports:
+      - 8086:8086
+    volumes:
+      - type: volume
+        source: influxdb2-data
+        target: /var/lib/influxdb2
+      - type: volume
+        source: influxdb2-config
+        target: /etc/influxdb2
+  
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=hongsaw-api
+
+volumes:
+  influxdb2-data:
+  influxdb2-config:

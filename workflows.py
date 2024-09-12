@@ -3,8 +3,8 @@ from ultralytics import YOLO
 from collections import defaultdict
 import supervision as sv
 import os, time
-from database import session
-import models
+from .database import session
+from .models import Devices, DwellTime
 import logging
 from dotenv import load_dotenv
 import influxdb_client
@@ -131,7 +131,7 @@ def find_dwell_time(is_running_flag,cap, configurations):
                     dwell_time = abs(t1 - t2)
                     if dwell_time > 5:
                         
-                        dt_event = models.DwellTime(
+                        dt_event = DwellTime(
                             left_time = person_detections['person']['left_time'],
                             return_time = person_detections['person']['return_time'],
                             dwell_time = f'{dwell_time} sec',
