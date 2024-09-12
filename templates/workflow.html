@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Selection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .container {
+            width: 300px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .end-button {
+            background-color: #f44336;
+        }
+        .end-button:hover {
+            background-color: #e53935;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Select Workflow</h2>
+        <form id="workflowForm" action="/start_function" method="post">
+            <!-- Checkboxes for Workflow Options -->
+            <label for="workflow">Choose your workflows:</label>
+            <div>
+                <label for="vehicle_in_out">Vehicle In/Out</label>
+                <input type="radio" id="vehicle_in_out" name="workflow" value="vehicle_in_out">
+                
+            </div>
+            <div>
+                <label for="dwell_time">Dwell Time</label>
+                <input type="radio" id="dwell_time" name="workflow" value="dwell_time">
+                
+            </div>
+            <div>
+                <label for="helmet_detection">Helmet Detection</label>
+                <input type="radio" id="helmet_detection" name="workflow" value="helmet_detection">
+                
+            </div>
+            <div>
+                <label for="device_id">Device ID</label>
+                <input type="text" id="device_id" name="device_id" value="{{device_id}}">
+            </div>
+            
+            <!-- Start Button -->
+            <button type="submit">Start</button>
+        </form>
+
+        <form id="endForm" action="/stop_function" method="post">
+            <!-- End Button -->
+            <button type="submit" class="end-button">End</button>
+        </form>
+        {% if status%}
+            <h3>Status: Running</h3>
+        {% endif %}
+        
+    </div>
+</body>
+</html>

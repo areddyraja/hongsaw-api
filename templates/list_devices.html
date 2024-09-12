@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devices Available</title>
+    <style>
+        body {
+            background-color: #f0f4f8;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            font-weight: 600;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        }
+        li {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+            list-style-type: none;
+            font-size: 1.1em;
+            color: #34495e;
+            display: flex;
+            flex-direction: column; /* Stack the elements vertically */
+        }
+
+        li span {
+            margin: 5px 0; /* Add space between the text lines */
+            word-wrap: break-word; /* Ensure long text breaks into the next line */
+        }
+
+        li:hover {
+            background-color: #dcdde1;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Devices Available</h1>
+    
+    <div class="container">
+        {% for device in devices %}
+            <li>
+                <span><strong>Device ID:</strong> {{ device['id'] }}</span>
+                <span><strong>IP:</strong> {{ device['device_ip'] }}</span>
+                <span><strong>Location:</strong> {{ device['location'] }}</span>
+                <span><strong>Created On:</strong> {{ device['created_on'] }}</span>
+            </li>
+        {% endfor %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data (WebSocket)</title>
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/ws");  // WebSocket connection
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            document.getElementById('time').innerText = data.time;
+            document.getElementById('value').innerText = data.value;
+        };
+
+        ws.onopen = function() {
+            console.log("WebSocket connection opened.");
+        };
+
+        ws.onclose = function() {
+            console.log("WebSocket connection closed.");
+        };
+    </script>
+</head>
+<body>
+    <h1>Real-Time Data (WebSocket)</h1>
+    <p>Time: <span id="time"></span></p>
+    <p>Value: <span id="value"></span></p>
+</body>
+</html>
