@@ -8,7 +8,7 @@ from ultralytics import YOLO
 from typing import Annotated
 import supervision as sv
 import cv2
-from .workflows import find_dwell_time, vehicles_in_or_out, helmet_detection
+from .workflows import find_dwell_time, helmet_detection
 from .models import Devices, DwellTime, Base, HelmetDetection
 import os, sys, io
 import json, time
@@ -336,7 +336,7 @@ async def start_function(request: Request,
     global selected_workflow
     selected_workflow = workflow
     if workflow == 'helmet_detection':
-        background_tasks.add_task(workflows.helmet_detection,
+        background_tasks.add_task(helmet_detection,
                                   app.state.is_running_flag,
                                   cap,
                                   configurations)
@@ -408,7 +408,7 @@ async def find_current_logs(request:Request):
 
     # Find log entries within the device's operation period (between start and end time)
     indexes = []
-    for index,log in enumerate(logs):
+    for index, log in enumerate(logs):
         ts = log.split(',')[0].split(' ')
         ts = f'{ts[0]} {ts[1]}'
         time_stamp = time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))

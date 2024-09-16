@@ -18,10 +18,10 @@ logging.basicConfig(level=logging.DEBUG,
                     ])
 
 
-api_token = os.getenv('INFLUXDB_API_KEY')
-org = "omniwyse"
-url = "http://localhost:8086"
-bucket="hongsaw"
+api_token = 'o3YL7TNMyAyQfqJm5ATHtaPjjxkJAzO0c-vLxegkrr8a3gxLDs_ZoiI1Qhs4_dVDXsMOgZTR3Mylji5dXHsCDA=='
+org = "test"
+url = "http://influxdb2:8086"
+bucket="test"
 
 try:
     client = influxdb_client.InfluxDBClient(url=url, token=api_token, org=org)
