@@ -397,7 +397,8 @@ async def start_function(
         raise HTTPException(status_code=400, detail="Error opening camera")
 
     global device_start_time
-    device_start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    device_start_time = datetime.now()
+    # device_start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     # Configuration data to be passed to the background task
     configurations = {
@@ -442,7 +443,8 @@ async def stop_function(request: Request, db: db_dependency):
     app.state.is_running_flag["is_running"] = False
 
     global device_end_time
-    device_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    device_end_time = datetime.now()
+    # device_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     if selected_workflow == "helmet_detection":
         # Query to find all events that match the current device start time

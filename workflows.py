@@ -1,8 +1,9 @@
 import cv2
 import supervision as sv
 import os, time
+from datetime import datetime
 from .database import session
-from .models import Devices, DwellTime
+from .models import Devices, DwellTime,HelmetDetection
 import logging
 from dotenv import load_dotenv
 import influxdb_client
@@ -17,8 +18,9 @@ logging.basicConfig(level=logging.DEBUG,
                         logging.StreamHandler()
                     ])
 
+logging.getLogger('sqlalchemy').setLevel(logging.CRITICAL)
 
-api_token = 'o3YL7TNMyAyQfqJm5ATHtaPjjxkJAzO0c-vLxegkrr8a3gxLDs_ZoiI1Qhs4_dVDXsMOgZTR3Mylji5dXHsCDA=='
+api_token = 'Q0dmkrSsXVTTSi7U2w-Se5LyzmKVMvFBJKQKUvYo88wNIY76XQvnWxFy0z5BPNOzneGRANrb09ii_d1ucrZjxA=='
 org = "test"
 url = "http://influxdb2:8086"
 bucket="test"
@@ -55,7 +57,7 @@ def find_dwell_time(is_running_flag,cap, configurations):
         if len(class_ids)!=0:
             classes = detections.data['class_name']
             
-            point = Point('Detections1') \
+            point = Point('Detections12') \
             .tag("object",classes) \
             .tag("timestamp",time.strftime("%y-%m-%d %H:%M:%S",time.localtime())) \
             .field("device id",configurations['device_id'])
@@ -65,7 +67,8 @@ def find_dwell_time(is_running_flag,cap, configurations):
             logging.info(classes)
             if 'person' not in classes and 'person' not in person_detections:
                 raw_left_time = time.localtime()
-                left_time = time.strftime("%y-%m-%d %H:%M:%S",raw_left_time)
+                # left_time = time.strftime("%y-%m-%d %H:%M:%S",raw_left_time)
+                left_time = datetime.now()
 
                 person_detections['person'] = {
                     'raw_left_time':raw_left_time,
@@ -76,7 +79,8 @@ def find_dwell_time(is_running_flag,cap, configurations):
             if not_present:
                 if 'person' in classes:
                     raw_return_time = time.localtime()
-                    return_time = time.strftime("%y-%m-%d %H:%M:%S", raw_return_time)
+                    # return_time = time.strftime("%y-%m-%d %H:%M:%S", raw_return_time)
+                    return_time = datetime.now()
 
                     person_detections['person'].update({'return_time':return_time})
                     
@@ -97,7 +101,7 @@ def find_dwell_time(is_running_flag,cap, configurations):
                         session.commit()
                         logging.critical('Event Created')
 
-                        point = Point('Dwell Times') \
+                        point = Point('Dwell Times1') \
                         .tag("left time",person_detections['person']['left_time']) \
                         .tag("return time",person_detections['person']['return_time']) \
                         .field("dwell time",dwell_time)
@@ -160,16 +164,16 @@ def helmet_detection(is_running_flag,cap, configurations):
 
                     if abs(hy1 - py1) <30 and track_ids[p_index] not in no_helmet_detections:
                         no_helmet_detections[track_ids[p_index]] = True
-                        detected_time = time.strftime("%y-%m-%d %H:%M:%S", time.localtime())
+                        detected_time = datetime.now()
 
-                        point = Point('Helmet_Detection') \
+                        point = Point('Helmet_Detection1') \
                         .tag("helmet_status",'NO-Helmet') \
                         .tag("detected_time",detected_time) \
                         .field("obj_id",data.index('Person'))
 
                         write_api.write(bucket=bucket, org= org, record=point)
 
-                        helmet_event = models.HelmetDetection(
+                        helmet_event = HelmetDetection(
                             obj_id = data.index('Person'),
                             helmet_status = 'NO-Helmet',
                             device_start_time = configurations['device_start_time'],
