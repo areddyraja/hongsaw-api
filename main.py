@@ -9,7 +9,7 @@ from typing import Annotated
 import supervision as sv
 import cv2
 from .workflows import find_dwell_time, vehicles_in_or_out, helmet_detection
-from .models import Devices, DwellTime, Base
+from .models import Devices, DwellTime, Base, HelmetDetection
 import os, sys, io
 import json, time
 
@@ -221,7 +221,7 @@ async def run_device(request:Request,db:db_dependency):
     Fetches a list of devices from the database and renders a template to allow the user 
     to select a device. If no devices are found, it raises an HTTP 404 error.
     '''
-    devices = db.query(models.Devices).all()
+    devices = db.query(Devices).all()
     if not devices:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail='No Devices')
     
@@ -372,7 +372,7 @@ async def stop_function(request:Request, db:db_dependency):
 
     if selected_workflow == 'helmet_detection':
         # Query to find all events that match the current device start time
-        current_events = db.query(models.HelmetDetection).filter(models.HelmetDetection.device_start_time == device_start_time).all()
+        current_events = db.query(HelmetDetection).filter(HelmetDetection.device_start_time == device_start_time).all()
         # Update the device end time for each event
         for current_event in current_events:
             current_event.device_end_time = device_end_time
@@ -380,7 +380,7 @@ async def stop_function(request:Request, db:db_dependency):
 
     elif selected_workflow == 'dwell_time':
         # Query to find all events that match the current device start time
-        current_events = db.query(models.DwellTime).filter(models.DwellTime.device_start_time == device_start_time).all()
+        current_events = db.query(DwellTime).filter(DwellTime.device_start_time == device_start_time).all()
         # Update the device end time for each event
         for current_event in current_events:
             if current_event:
@@ -436,10 +436,10 @@ async def list_events(request:Request, db:db_dependency, workflow:str):
     """
     # Query the database for events based on the workflow type
     if workflow == 'dwelltime':
-        events = db.query(models.DwellTime).all()
+        events = db.query(DwellTime).all()
 
     elif workflow == 'helmet':
-        events = db.query(models.HelmetDetection).all()
+        events = db.query(HelmetDetection).all()
     # Render the 'events.html' template with the retrieved events
     return templates.TemplateResponse('events.html',{"request":request,"events":events})
 
