@@ -215,6 +215,10 @@ def delete_device(db: db_dependency, device_id:int):
 
 @app.get("/select_device",response_class=HTMLResponse)
 async def run_device(request:Request,db:db_dependency):
+    '''
+    Fetches a list of devices from the database and renders a template to allow the user 
+    to select a device. If no devices are found, it raises an HTTP 404 error.
+    '''
     devices = db.query(models.Devices).all()
     if not devices:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail='No Devices')
@@ -224,6 +228,11 @@ async def run_device(request:Request,db:db_dependency):
 
 @app.post("/start_stream",response_class=HTMLResponse)
 async def stream_video(request:Request,db:db_dependency,device_id:int =Form(...)):
+    '''
+    Starts video streaming from the selected device. It retrieves the device by its ID from the database,
+    then attempts to open a video stream from the device's IP address. 
+    If it fails, it raises an HTTP 400 error.
+    '''
     device = db.query(Devices).filter(Devices.id == device_id).first()
     if not device:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No Devices Found')
@@ -232,12 +241,10 @@ async def stream_video(request:Request,db:db_dependency,device_id:int =Form(...)
     if device_ip == '0':
         device_ip = 0
     
-    global cap
+    global demo_cap
+    demo_cap = cv2.VideoCapture(device_ip)
     
-
-    cap = cv2.VideoCapture(device_ip)
-    
-    if not cap.isOpened():
+    if not demo_cap.isOpened():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f'Error in connecting to device:{device_ip}')
     
 
@@ -245,23 +252,31 @@ async def stream_video(request:Request,db:db_dependency,device_id:int =Form(...)
 
 @app.get("/video_feed")
 async def video_feed():
-
+    '''
+    Streams the video frames from the currently connected device.
+    It continuously sends frames to the client in a streaming format.
+    '''
     if not app.state.is_running_flag["is_running"]:
         app.state.is_running_flag["is_running"] = True
 
 
-    return StreamingResponse(generate_frames(app.state.is_running_flag, cap), media_type='multipart/x-mixed-replace; boundary=frame')
+    return StreamingResponse(generate_frames(app.state.is_running_flag, demo_cap), media_type='multipart/x-mixed-replace; boundary=frame')
+
 
 
 @app.post("/stop_stream")
 async def stop_stream():
+    '''
+    Stops the video stream by setting a flag that controls the streaming process.
+    Redirects the user back to the device selection page.
+    '''
     app.state.is_running_flag['is_running'] = False
     
     return RedirectResponse(url='/select_device',status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/start_workflow/{device_id}",response_class=HTMLResponse)
-def start_workflow(device_id:int, request:Request):
+async def start_workflow(device_id:int, request:Request):
     '''
     Endpoint to render the form for starting workflow.
     '''
@@ -269,7 +284,7 @@ def start_workflow(device_id:int, request:Request):
 
 
 @app.post('/start_function')
-def start_function(request: Request,
+async def start_function(request: Request,
                    db: db_dependency,
                    background_tasks: BackgroundTasks,
                    device_id: int= Form(...),
@@ -316,9 +331,14 @@ def start_function(request: Request,
         'device_start_time':device_start_time
     }
     
-    if workflow == 'vehicle_in_out':
-        # workflows.vehicles_in_or_out()
-        pass
+    global selected_workflow
+    selected_workflow = workflow
+    if workflow == 'helmet_detection':
+        background_tasks.add_task(workflows.helmet_detection,
+                                  app.state.is_running_flag,
+                                  cap,
+                                  configurations)
+    
     elif workflow == 'dwell_time':
         background_tasks.add_task(workflows.find_dwell_time, 
                                   app.state.is_running_flag,
@@ -326,7 +346,7 @@ def start_function(request: Request,
                                   configurations)
         
     else:
-        # workflows.helmet_detection()
+        # workflows.vehicles_in_or_out()
         pass
 
     # Render the 'workflow.html' template with the device ID and status
@@ -335,7 +355,7 @@ def start_function(request: Request,
 
 
 @app.post("/stop_function")
-def stop_function(request:Request, db:db_dependency):
+async def stop_function(request:Request, db:db_dependency):
     """
     Stops the running function by setting the flag to False.
     
@@ -348,28 +368,39 @@ def stop_function(request:Request, db:db_dependency):
     global device_end_time
     device_end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-    # Query to find all events that match the current device start time
-    current_events = db.query(models.DwellTime).filter(models.DwellTime.device_start_time == device_start_time).all()
-    # Update the device end time for each event
-    for current_event in current_events:
-        if current_event:
+    if selected_workflow == 'helmet_detection':
+        # Query to find all events that match the current device start time
+        current_events = db.query(models.HelmetDetection).filter(models.HelmetDetection.device_start_time == device_start_time).all()
+        # Update the device end time for each event
+        for current_event in current_events:
             current_event.device_end_time = device_end_time
             db.commit()
 
-    # Redirect to the current logs page after stopping the function    
+    elif selected_workflow == 'dwell_time':
+        # Query to find all events that match the current device start time
+        current_events = db.query(models.DwellTime).filter(models.DwellTime.device_start_time == device_start_time).all()
+        # Update the device end time for each event
+        for current_event in current_events:
+            if current_event:
+                current_event.device_end_time = device_end_time
+                db.commit()
+            
+    # Redirect to the current logs page after stopping the function 
+    if cap.isOpened():
+        cap.release()
+    cv2.destroyAllWindows()   
     return RedirectResponse(url='/current_logs', status_code=status.HTTP_303_SEE_OTHER)
 
 
 
 @app.get('/current_logs',response_class=HTMLResponse)
-def find_current_logs(request:Request):
+async def find_current_logs(request:Request):
     """
     Retrieves and displays logs generated during the device's operation period.
     
     - Reads logs from the `yolo.log` file.
     - Filters logs based on the start and end times of the device's operation.
     """
-    
     with open('yolo.log','r')as l:
         logs = l.readlines()
 
@@ -394,7 +425,7 @@ def find_current_logs(request:Request):
 
 
 @app.get('/events/{workflow}',response_class=HTMLResponse)
-def list_events(request:Request, db:db_dependency, workflow:str):
+async def list_events(request:Request, db:db_dependency, workflow:str):
     """
     Lists all events for a specified workflow type.
     
@@ -404,6 +435,9 @@ def list_events(request:Request, db:db_dependency, workflow:str):
     # Query the database for events based on the workflow type
     if workflow == 'dwelltime':
         events = db.query(models.DwellTime).all()
+
+    elif workflow == 'helmet':
+        events = db.query(models.HelmetDetection).all()
     # Render the 'events.html' template with the retrieved events
     return templates.TemplateResponse('events.html',{"request":request,"events":events})
 
