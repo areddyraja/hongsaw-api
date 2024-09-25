@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 logging.getLogger('sqlalchemy').setLevel(logging.CRITICAL)
 
-api_token = 'Q0dmkrSsXVTTSi7U2w-Se5LyzmKVMvFBJKQKUvYo88wNIY76XQvnWxFy0z5BPNOzneGRANrb09ii_d1ucrZjxA=='
+api_token = 'Z_jvJMPHlxhEDcBF13_AAMu7HkCWDQ5b3YMjyu86N8NHRr38VvxCD0Us4GwO_Wqwy9z1pWvXXaPMKAbV8PCiKg=='
 org = "test"
 url = "http://influxdb2:8086"
 bucket="test"

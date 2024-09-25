@@ -13,20 +13,22 @@ from fastapi.responses import (
     JSONResponse,
     StreamingResponse,
 )
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 from .database import engine, SessionLocal
 from sqlalchemy.orm import Session
 from ultralytics import YOLO
-from typing import Annotated
+from typing import Annotated, List
 import supervision as sv
 import cv2
 from .workflows import find_dwell_time, helmet_detection
-from .models import Devices, DwellTime, Base, HelmetDetection
+from .models import Devices, DwellTime, Base, HelmetDetection, Workflow, ModelRuntime
 import os, sys, io
 import json, time
 
+global model, hel_model, tracker
 
 app = FastAPI()
 templates = Jinja2Templates(directory="/app/app/templates")
@@ -529,6 +531,351 @@ async def list_events(request: Request, db: db_dependency, workflow: str):
         "events.html", {"request": request, "events": events}
     )
 
+
+# Pydantic model for Workflow response
+class WorkflowResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+    version: str
+    status: bool
+    created_on: datetime
+    last_updated_on: datetime
+
+    class Config:
+        orm_mode = True
+
+@app.post("/create_workflow", response_class=JSONResponse)
+def create_workflow(
+    db: db_dependency,
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(...),
+    version: str = Form(...),
+    status: bool = Form(...),
+):
+    """
+    Endpoint to create a new workflow in the database.
+    """
+    new_workflow = Workflow(
+        name=name,
+        description=description,
+        version=version,
+        status=status,
+        created_on=datetime.utcnow(),
+        last_updated_on=datetime.utcnow()
+    )
+
+    db.add(new_workflow)
+    db.commit()
+    db.refresh(new_workflow)
+
+    return JSONResponse(content={"message": "Workflow created successfully", "id": new_workflow.id}, status_code=201)
+
+@app.put("/update_workflow/{workflow_id}", response_class=JSONResponse)
+def update_workflow(
+    workflow_id: int,
+    db: db_dependency,
+    request: Request,
+    name: str = Form(None),
+    description: str = Form(None),
+    version: str = Form(None),
+    status: bool = Form(None),
+):
+    """
+    Endpoint to update an existing workflow in the database.
+    """
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if name is not None:
+        workflow.name = name
+    if description is not None:
+        workflow.description = description
+    if version is not None:
+        workflow.version = version
+    if status is not None:
+        workflow.status = status
+
+    workflow.last_updated_on = datetime.utcnow()
+
+    db.commit()
+    db.refresh(workflow)
+
+    return JSONResponse(content={"message": "Workflow updated successfully"}, status_code=200)
+
+@app.delete("/delete_workflow/{workflow_id}", response_class=JSONResponse)
+def delete_workflow(
+    workflow_id: int,
+    db: db_dependency,
+    request: Request,
+):
+    """
+    Endpoint to delete a workflow from the database.
+    """
+    workflow = db.query(Workflow).filter(Workflow.id == workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    db.delete(workflow)
+    db.commit()
+
+    return JSONResponse(content={"message": "Workflow deleted successfully"}, status_code=200)
+
+@app.get("/get_all_workflows", response_model=List[WorkflowResponse])
+def get_all_workflows(
+    db: db_dependency,
+    request: Request,
+):
+    """
+    Endpoint to retrieve all workflows from the database.
+    """
+    workflows = db.query(Workflow).all()
+    if len(workflows) == 0:
+        workflow1 = Workflow(
+            name="helmet detection",
+            description="Detects helmets in CCTV footage from construction sites",
+            version="1.0",
+            status=True,
+            created_on=datetime.utcnow(),
+            last_updated_on=datetime.utcnow()
+        )
+        
+        workflow2 = Workflow(
+            name="dwell time",
+            description="Detects the duration an object is present in a camera feed",
+            version="1.0",
+            status=True,
+            created_on=datetime.utcnow(),
+            last_updated_on=datetime.utcnow()
+        )
+        
+        # Add the workflows to the session and commit
+        db.add(workflow1)
+        db.add(workflow2)
+        db.commit()
+
+    workflows = db.query(Workflow).all()
+    return workflows
+
+class ModelRuntimeCreate(BaseModel):
+    device_id: int
+    workflow_id: int
+    status: str
+
+class ModelRuntimeResponse(BaseModel):
+    id: int
+    device_id: int
+    workflow_id: int
+    start_time: datetime
+    last_stop_time: datetime = None
+    status: str
+
+    class Config:
+        orm_mode = True
+
+@app.post("/create_model_runtime", response_model=ModelRuntimeResponse)
+def create_model_runtime(
+    db: Session = Depends(get_db),
+    device_id: int = Form(...),
+    workflow_id: int = Form(...),
+    status: str = Form(...)
+):
+    """
+    Endpoint to create a new model runtime in the database.
+    """
+    new_runtime = ModelRuntime(
+        device_id=device_id,
+        workflow_id=workflow_id,
+        start_time=datetime.utcnow(),
+        status=status
+    )
+
+    db.add(new_runtime)
+    db.commit()
+    db.refresh(new_runtime)
+
+    return new_runtime
+
+@app.delete("/delete_model_runtime/{runtime_id}", response_model=dict)
+def delete_model_runtime(
+    runtime_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint to delete a model runtime from the database.
+    """
+    runtime = db.query(ModelRuntime).filter(ModelRuntime.id == runtime_id).first()
+    if not runtime:
+        raise HTTPException(status_code=404, detail="Model runtime not found")
+
+    db.delete(runtime)
+    db.commit()
+
+    return {"message": "Model runtime deleted successfully"}
+
+@app.get("/get_all_model_runtimes", response_model=List[ModelRuntimeResponse])
+def get_all_model_runtimes(
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """
+    Endpoint to get all model runtimes from the database.
+    """
+    runtimes = db.query(ModelRuntime).offset(skip).limit(limit).all()
+    return runtimes
+
+@app.post("/start_runtime/{runtime_id}")
+async def start_runtime(
+    runtime_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Start the specified runtime.
+    """
+    runtime = db.query(ModelRuntime).filter(ModelRuntime.id == runtime_id).first()
+    if not runtime:
+        raise HTTPException(status_code=404, detail=f"Runtime with id {runtime_id} not found")
+
+    device = db.query(Devices).filter(Devices.id == runtime.device_id).first()
+    workflow = db.query(Workflow).filter(Workflow.id == runtime.workflow_id).first()
+
+    if not device or not workflow:
+        raise HTTPException(status_code=404, detail="Associated device or workflow not found")
+
+    if runtime.status == "Running":
+        raise HTTPException(status_code=400, detail="Runtime is already running")
+
+    try:
+        device_ip = device.device_ip if device.device_ip != "0" else 0
+        global capture
+        capture = cv2.VideoCapture(device_ip)
+
+        if not capture.isOpened():
+            raise HTTPException(status_code=400, detail="Error opening camera")
+
+        runtime.start_time = datetime.utcnow()
+        runtime.status = "Running"
+
+        configurations = {
+            "model": model,  # Assuming these are globally defined
+            "hel_model": hel_model,
+            "tracker": tracker,
+            "device_id": device.id,
+            "device_start_time": runtime.start_time,
+        }
+
+        if workflow.name == "helmet detection":
+            background_tasks.add_task(
+                helmet_detection, {"is_running": True}, capture, configurations
+            )
+        elif workflow.name == "dwell time":
+            background_tasks.add_task(
+                find_dwell_time, {"is_running": True}, capture, configurations
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported workflow")
+
+        db.commit()
+        return {"message": "Runtime started successfully", "status": "Running"}
+
+    except Exception as e:
+        runtime.status = "Failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Runtime failed to start: {str(e)}")
+
+@app.post("/stop_runtime/{runtime_id}")
+async def stop_runtime(
+    runtime_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Stop the specified runtime.
+    """
+    runtime = db.query(ModelRuntime).filter(ModelRuntime.id == runtime_id).first()
+    if not runtime:
+        raise HTTPException(status_code=404, detail=f"Runtime with id {runtime_id} not found")
+
+    if runtime.status != "Running":
+        raise HTTPException(status_code=400, detail="Runtime is not currently running")
+
+    try:
+        runtime.last_stop_time = datetime.utcnow()
+        runtime.status = "Stopped"
+
+        workflow = db.query(Workflow).filter(Workflow.id == runtime.workflow_id).first()
+
+        if workflow.name == "helmet detection":
+            current_events = (
+                db.query(HelmetDetection)
+                .filter(HelmetDetection.device_start_time == runtime.start_time)
+                .all()
+            )
+            for event in current_events:
+                event.device_end_time = runtime.last_stop_time
+
+        elif workflow.name == "dwell time":
+            current_events = (
+                db.query(DwellTime)
+                .filter(DwellTime.device_start_time == runtime.start_time)
+                .all()
+            )
+            for event in current_events:
+                event.device_end_time = runtime.last_stop_time
+
+        db.commit()
+
+        if capture.isOpened():
+            capture.release()
+        cv2.destroyAllWindows()
+
+        return {"message": "Runtime stopped successfully", "status": "Stopped"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop runtime: {str(e)}")
+
+@app.get("/get_runtime_logs/{runtime_id}")
+async def get_runtime_logs(runtime_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieves logs for a specific runtime.
+
+    - Queries the database for the runtime's start and end times.
+    - Reads logs from the 'yolo.log' file.
+    - Filters logs based on the start and end times of the runtime.
+    - Returns the filtered logs as JSON.
+    """
+    # Query the database for the runtime
+    runtime = db.query(ModelRuntime).filter(ModelRuntime.id == runtime_id).first()
+    if not runtime:
+        raise HTTPException(status_code=404, detail=f"Runtime with id {runtime_id} not found")
+
+    # Read the log file
+    try:
+        with open("yolo.log", "r") as log_file:
+            logs = log_file.readlines()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Log file not found")
+
+    # Convert runtime start and end times to timestamps
+    start_time = time.mktime(runtime.start_time.timetuple())
+    end_time = time.mktime(runtime.last_stop_time.timetuple()) if runtime.last_stop_time else time.time()
+
+    # Filter logs based on runtime start and end times
+    filtered_logs = []
+    for log in logs:
+        try:
+            log_timestamp_str = log.split(",")[0]
+            log_timestamp = time.mktime(datetime.strptime(log_timestamp_str, "%Y-%m-%d %H:%M:%S").timetuple())
+            if start_time <= log_timestamp <= end_time:
+                filtered_logs.append(log.strip())
+        except (ValueError, IndexError):
+            # Skip malformed log entries
+            continue
+
+    return {"runtime_id": runtime_id, "logs": filtered_logs}
 
 if __name__ == "__main__":
     import uvicorn
